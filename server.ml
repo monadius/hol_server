@@ -1,5 +1,7 @@
 exception Timeout
 
+let debug_flag = ref true
+
 let set_timeout, get_timeout =
   let timeout = ref 20 in
   (fun t -> timeout := t),
@@ -60,40 +62,28 @@ let read_redirected redirect =
     ""
 
 let write_to_string writer =
-  let sbuff = ref "" in
-  let output s m n = sbuff := !sbuff ^ String.sub s m n in
-  let flush () = () in
-  let fmt = Format.make_formatter output flush in
+  let buf = Buffer.create 1024 in
+  let fmt = Format.formatter_of_buffer buf in
   Format.pp_set_max_boxes fmt 100;
   fun arg ->
-    sbuff := ""; 
+    Buffer.clear buf;
     let result = writer fmt arg in
     Format.pp_print_flush fmt ();
-    (result, !sbuff)
+    result, Buffer.contents buf
 
-let starts_with str ~prefix =
-  let n = String.length prefix in
-  if n > String.length str then false
-  else
-    String.sub str 0 n = prefix    
-
-let exec print_result fmt cmd = 
+(* let exec print_result fmt cmd = 
+  let pos = Lexing.{
+    pos_fname = "(server)";
+    pos_lnum = 1;
+    pos_bol = 0;
+    pos_cnum = 0;
+  } in
   let lb = Lexing.from_string cmd in
+  Lexing.set_position lb pos;
+  Lexing.set_filename lb pos.pos_fname;
   let p1 = !Toploop.parse_toplevel_phrase lb in
   let p2 = Toploop.preprocess_phrase fmt p1 in
-  Toploop.execute_phrase print_result fmt p2
-
-(*
-let exec2 print_result fmt s = ignore @@ Toploop.execute_phrase print_result fmt
-  @@ !Toploop.parse_toplevel_phrase @@ Lexing.from_string s
-*)
-
-let __strBuffer = ref ""
-
-let execute_string_cmd cmd =
-  let full_cmd = "Server.__strBuffer := " ^ cmd in
-  let result = exec false Format.std_formatter full_cmd in
-  (result, !__strBuffer)
+  Toploop.execute_phrase print_result fmt p2 *)
 
 let new_stdout = create_redirected_descr "stdout.txt"
 let new_stderr = create_redirected_descr "stderr.txt"
@@ -113,12 +103,6 @@ let rec toploop_service ic oc =
     output_string oc "\n";
     if flush_output then flush oc 
   in
-  let process_input input =
-    if starts_with input ~prefix:"raw_print_string" then
-      snd (execute_string_cmd input)
-    else
-      snd (write_to_string (exec true) input) 
-  in
   Format.printf "[START] Connection open@.";
   send_string ~flush_output:true "info:" (Printf.sprintf "pid:%d" (Unix.getpid ()));
   let connected = ref true in
@@ -126,12 +110,12 @@ let rec toploop_service ic oc =
     try
       send_string ~flush_output:true "ready" "";
       let raw_input = input_line ic in
-      let s = 
+      let input = 
         try Scanf.unescaped raw_input 
         with _ -> Format.eprintf "[ERROR] Bad input@."; raw_input in
-      Format.printf "Input: %s@." s;
-      if List.mem (String.trim s) ["#quit"; "#quit;;"] then raise End_of_file;
-      let result = begin
+      if !debug_flag then Format.printf "Input: %s@." input;
+      if List.mem (String.trim input) ["#quit"; "#quit;;"] then raise End_of_file;
+      let ok, result = begin
         try
           let finally () = 
             ignore (Unix.alarm 0);
@@ -142,36 +126,31 @@ let rec toploop_service ic oc =
           redirect Unix.stdout new_stdout;
           redirect Unix.stderr new_stderr;
           (* Set timeout for special commands only (we don't want to interrupt "needs", etc.) *)
-          let set_alarm = starts_with s ~prefix:"raw_print_string" ||
+          (* let set_alarm = starts_with s ~prefix:"raw_print_string" ||
                           starts_with s ~prefix:"refine" in
           let timeout = get_timeout () in
-          if timeout > 0 && set_alarm then ignore (Unix.alarm timeout);
-          try_finally (process_input, finally) s
+          if timeout > 0 && set_alarm then ignore (Unix.alarm timeout); *)
+          (* try_finally (write_to_string (exec true), finally) (Toploop.String input) *)
+          try_finally (write_to_string Toploop.use_input, finally) (Toploop.String input)
         with exn ->
-          let exn_str = 
-            if exn = Timeout then "timeout" else Printexc.to_string exn in
-            (* if exn = Timeout then 
-              "timeout" 
-            else
-              snd (write_to_string Location.report_exception exn) in *)
-          Format.eprintf "[ERROR] %s@." exn_str; 
-          Format.sprintf "Error: %s" exn_str 
+          let exn_str = Printexc.to_string exn in
+          if !debug_flag then Format.eprintf "[ERROR] %s@." exn_str; 
+          false, exn_str
       end in
+      let result_str = if ok then result else Format.sprintf "Error: %s@." result in
       let stdout_str = read_redirected new_stdout in
       let stderr_str = read_redirected new_stderr in
       send_string "stdout:" stdout_str;
       send_string "stderr:" stderr_str;
-      send_string "result:" result;
+      send_string "result:" result_str;
       flush oc;
       flush stdout; 
       flush stderr
     with
-    | End_of_file -> 
-      Format.printf "[STOP] Connection closed@.";
-      connected := false
-    | Sys.Break ->
-      Format.eprintf "Interrupted@."
-  done
+    | End_of_file -> connected := false
+    | Sys.Break -> Format.eprintf "Interrupted@."
+  done;
+  Format.printf "[STOP] Connection closed@."
 
 let string_of_sockaddr = function
   | Unix.ADDR_UNIX s -> s
