@@ -85,9 +85,6 @@ let write_to_string writer =
   let p2 = Toploop.preprocess_phrase fmt p1 in
   Toploop.execute_phrase print_result fmt p2 *)
 
-let new_stdout = create_redirected_descr "stdout.txt"
-let new_stderr = create_redirected_descr "stderr.txt"
-
 let try_finally (f, finally) arg =
   let result = try f arg with exn -> finally (); raise exn in
   finally (); 
@@ -96,7 +93,7 @@ let try_finally (f, finally) arg =
 let rec restart_on_EINTR f x =
   try f x with Unix.Unix_error (Unix.EINTR, _, _) -> restart_on_EINTR f x
 
-let rec toploop_service ic oc =
+let rec toploop_service new_stdout new_stderr ic oc =
   let send_string ?(flush_output = false) prefix string =
     output_string oc prefix;
     output_string oc (String.escaped string);
@@ -168,12 +165,19 @@ let establish_forkless_server server_fun sockaddr =
       Format.printf "Connection from: %s@." (string_of_sockaddr caller);
       let inchan = Unix.in_channel_of_descr s in
       let outchan = Unix.out_channel_of_descr s in
+      let tmp_stdout = Filename.temp_file "stdout" "_tmp.txt" in
+      let tmp_stderr = Filename.temp_file "stderr" "_tmp.txt" in
+      let new_stdout = create_redirected_descr tmp_stdout in
+      let new_stderr = create_redirected_descr tmp_stderr in
       let finally () =
         (* close_out closes the file descriptor so Unix.close s should not be called *)
         close_out outchan;
         (* close_in is not necessary *)
-        close_in_noerr inchan in
-      try_finally (server_fun inchan, finally) outchan;
+        close_in_noerr inchan;
+        (try Sys.remove tmp_stdout with Sys_error _ -> ());
+        (try Sys.remove tmp_stderr with Sys_error _ -> ())
+      in
+      try_finally (server_fun new_stdout new_stderr inchan, finally) outchan;
     done
   with 
   | Unix.Unix_error (Unix.EADDRINUSE, _, _) ->
