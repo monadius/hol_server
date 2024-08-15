@@ -134,12 +134,11 @@ let rec toploop_service new_stdout new_stderr ic oc =
           if !debug_flag then Format.eprintf "[ERROR] %s@." exn_str; 
           false, exn_str
       end in
-      let result_str = if ok then result else Format.sprintf "Error: %s@." result in
       let stdout_str = read_redirected new_stdout in
       let stderr_str = read_redirected new_stderr in
       send_string "stdout:" stdout_str;
       send_string "stderr:" stderr_str;
-      send_string "result:" result_str;
+      send_string (if ok then "result:" else "rerror:") result;
       flush oc;
       flush stdout; 
       flush stderr

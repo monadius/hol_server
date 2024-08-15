@@ -14,7 +14,9 @@ All input strings should be escaped (they are processed with `Scanf.unescaped`).
 
 - `stderr:{escaped text}`: stderr output.
 
-- `result:{escaped text}`: the command result. It could be either int the form `- : type = value` (`val it : type = value` for HOL Light), `Exception: exception`, or `Error: error` (this result is returned when the command cannot be parsed).
+- `result:{escaped text}`: the command result. It could be either int the form `- : type = value` or `val it : type = value` for HOL Light.
+
+- `rerror:{escaped text}`: the error result. It could be either a parsing error or an exception.
 
 ### Special commands
 
