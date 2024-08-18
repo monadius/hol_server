@@ -1,4 +1,18 @@
-### A server for executing toplevel HOL Light commands
+## A server for executing toplevel HOL Light commands
+
+This server is used by the [HOL Light VS Code extension](https://github.com/monadius/vscode-hol-light) to execute HOL Light
+commands and get command results.
+
+Clone this repository and run `make` to compile the server code. To start the server inside an active HOL Light REPL, run the following commands:
+```
+#load "unix.cma";;
+#load "{path to the server}/server.cmo";;
+Server.start 2012;;
+```
+
+(Replace `{path to the server}` with the path where this repository is cloned.)
+
+`2012` is the server port number. You may use any available port number.
 
 ## Protocol
 
