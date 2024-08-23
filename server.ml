@@ -1,4 +1,5 @@
 exception Timeout
+exception Sigpipe
 
 let debug_flag = ref true
 
@@ -7,6 +8,7 @@ let set_timeout, get_timeout =
   (fun t -> timeout := t),
   (fun () -> !timeout)
 
+let () = Sys.set_signal Sys.sigpipe (Sys.Signal_handle (fun _ -> raise Sigpipe))
 let () = Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout))
 
 type redirected_descr = {
@@ -143,6 +145,7 @@ let rec toploop_service new_stdout new_stderr ic oc =
       flush stdout; 
       flush stderr
     with
+    | Sigpipe -> Format.eprintf "SIGPIPE@."; connected := false
     | End_of_file -> connected := false
     | Sys.Break -> Format.eprintf "Interrupted@."
   done;
@@ -170,7 +173,7 @@ let establish_forkless_server ?(single_connection = false) server_fun sockaddr =
       let new_stderr = create_redirected_descr tmp_stderr in
       let finally () =
         (* close_out closes the file descriptor so Unix.close s should not be called *)
-        close_out outchan;
+        close_out_noerr outchan;
         (* close_in is not necessary *)
         close_in_noerr inchan;
         (try Sys.remove tmp_stdout with Sys_error _ -> ());

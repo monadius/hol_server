@@ -21,6 +21,7 @@ let client ?(host_name = "localhost") port =
   with exn ->
     Unix.shutdown_connection in_chan;
     close_out out_chan;
+    Printf.printf "Connection closed\n%!";
     raise exn
 
 let () = client 2012
