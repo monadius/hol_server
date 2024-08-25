@@ -174,9 +174,8 @@ let establish_forkless_server ?(single_connection = false) server_fun sockaddr =
       let new_stderr = create_redirected_descr tmp_stderr in
       let finally () =
         (* close_out closes the file descriptor so Unix.close s should not be called *)
+        (* We use close_out_noerr to avoid potential SIGPIPE errors *)
         close_out_noerr outchan;
-        (* close_in is not necessary *)
-        close_in_noerr inchan;
         (try Sys.remove tmp_stdout with Sys_error _ -> ());
         (try Sys.remove tmp_stderr with Sys_error _ -> ())
       in
