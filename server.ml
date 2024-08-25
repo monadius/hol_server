@@ -121,7 +121,8 @@ let rec toploop_service new_stdout new_stderr ic oc =
             Format.pp_print_flush Format.std_formatter ();
             Format.pp_print_flush Format.err_formatter ();
             flush stdout; flush stderr;
-            restore new_stdout; restore new_stderr in
+            restore new_stdout; restore new_stderr 
+          in
           redirect Unix.stdout new_stdout;
           redirect Unix.stderr new_stderr;
           (* Set timeout for special commands only (we don't want to interrupt "needs", etc.) *)
@@ -129,7 +130,7 @@ let rec toploop_service new_stdout new_stderr ic oc =
                           starts_with s ~prefix:"refine" in
           let timeout = get_timeout () in
           if timeout > 0 && set_alarm then ignore (Unix.alarm timeout); *)
-          (* try_finally (write_to_string (exec true), finally) (Toploop.String input) *)
+          (* try_finally (write_to_string (exec true), finally) input *)
           try_finally (write_to_string Toploop.use_input, finally) (Toploop.String input)
         with exn ->
           let exn_str = Printexc.to_string exn in

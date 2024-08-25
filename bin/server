@@ -1,0 +1,1 @@
+ocaml -I "+compiler-libs" -init bin/start_server.ml
