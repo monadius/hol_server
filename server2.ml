@@ -9,11 +9,6 @@ let () = Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout))
 let rec restart_on_EINTR f x =
   try f x with Unix.Unix_error (Unix.EINTR, _, _) -> restart_on_EINTR f x
 
-let try_finally ~(finally : unit -> unit) f arg =
-  let result = try f arg with exn -> finally (); raise exn in
-  finally ();
-  result
-
 let write_to_string writer =
   let buf = Buffer.create 1024 in
   let fmt = Format.formatter_of_buffer buf in
@@ -24,23 +19,27 @@ let write_to_string writer =
     Format.pp_print_flush fmt ();
     result, Buffer.contents buf
 
+let ($) f x = f x
+
+(** Reads all available data from a given file descriptor *)
 let drain : Unix.file_descr -> Buffer.t =
-  let size = 1024 * 10 in
+  let size = 16 * 1024 in
   let bytes = Bytes.create size in
   fun fdin ->
     let buf = Buffer.create size in
     Unix.set_nonblock fdin;
-    try_finally ~finally:(fun () -> Unix.clear_nonblock fdin)
-    (fun () ->
-      try
-        let n = ref 1 in
-        while !n > 0 do
-          n := Unix.read fdin bytes 0 size;
-          Buffer.add_subbytes buf bytes 0 !n;
-        done;
-        buf
-      with Unix.Unix_error (Unix.EAGAIN, _, _) | Unix.Unix_error (Unix.EWOULDBLOCK, _, _) -> buf
-    ) ()
+    Fun.protect ~finally:(fun () -> Unix.clear_nonblock fdin) $ fun () ->
+    try
+      let n = ref 1 in
+      while !n > 0 do
+        n := Unix.read fdin bytes 0 size;
+        Buffer.add_subbytes buf bytes 0 !n;
+      done;
+      buf
+    (* Catch all errors because Unix.Unix_error is not reliable if #load "unix.cma" is evaluated
+       by the server: Old functions from the Unix module will throw errors from the new module. *)
+    (* with Unix.Unix_error (Unix.EAGAIN, _, _) | Unix.Unix_error (Unix.EWOULDBLOCK, _, _) -> buf *)
+    with _ -> buf
 
 type redirected_descr = {
   new_descr : Unix.file_descr;
@@ -70,12 +69,8 @@ let restore redirected =
     Unix.dup2 descr redirected.old_descr;
     Unix.close descr
 
-let eval_input input =
-  (* A hack to avoid loading "unix.cma" twice:
-     We don't want to override the Unix module and get incompatible unix errors *)
-  match String.trim input with
-  | "#load \"threads.cma\"" | "#load \"unix.cma\"" -> true, ""
-  | _ -> write_to_string Toploop.use_input (Toploop.String input)
+let toploop_eval input =
+  write_to_string Toploop.use_input (Toploop.String input)
 
 let monitor_thread socket_ic socket_oc (labelled_fdins : (Unix.file_descr * string) list) =
   ignore (Thread.sigmask Unix.SIG_BLOCK [Sys.sigint]);
@@ -167,7 +162,7 @@ let rec mt_service (ic, oc) =
           in
           redirect Unix.stdout new_stdout;
           redirect Unix.stderr new_stderr;
-          try_finally ~finally eval_input input
+          Fun.protect ~finally (fun () -> toploop_eval input)
         with exn ->
           let exn_str = Printexc.to_string exn in
           if !debug_flag then Format.eprintf "[ERROR] %s@." exn_str; 
@@ -211,7 +206,7 @@ let establish_forkless_server ?(single_connection = false) server_fun sockaddr =
         (* We use close_out_noerr to avoid potential SIGPIPE errors *)
         close_out_noerr outchan;
       in
-      try_finally ~finally server_fun (inchan, outchan);
+      Fun.protect ~finally (fun () -> server_fun (inchan, outchan));
       if single_connection then raise Sys.Break;
     done
   with 
