@@ -21,6 +21,14 @@ let write_to_string writer =
 
 let ($) f x = f x
 
+let (let&) fd f =
+    Fun.protect ~finally:(fun () -> print_endline "closing"; Unix.close fd) (fun () -> f fd)
+
+let (let&&) (fd1, fd2) f =
+    let& fd1 = fd1 in
+    let& fd2 = fd2 in
+    f (fd1, fd2)
+
 (** Reads all available data from a given file descriptor *)
 let drain : Unix.file_descr -> Buffer.t =
   let size = 16 * 1024 in
@@ -116,9 +124,9 @@ let monitor_thread socket_ic socket_oc (labelled_fdins : (Unix.file_descr * stri
 let rec mt_service (ic, oc) =
   Format.printf "[START] Connection open@.";
 
-  let fdin_stdout, fdout_stdout = Unix.pipe () in
-  let fdin_stderr, fdout_stderr = Unix.pipe () in
-  let fdin_ctrl, fdout_ctrl = Unix.pipe () in
+  let&& fdin_stdout, fdout_stdout = Unix.pipe () in
+  let&& fdin_stderr, fdout_stderr = Unix.pipe () in
+  let&& fdin_ctrl, fdout_ctrl = Unix.pipe () in
 
   let new_stdout = create_redirected_descr fdout_stdout in
   let new_stderr = create_redirected_descr fdout_stderr in
@@ -182,7 +190,6 @@ let rec mt_service (ic, oc) =
     | End_of_file -> connected := false
     | Sys.Break -> Format.eprintf "Interrupted@."
   done;
-  List.iter Unix.close [fdin_stdout; fdout_stdout; fdin_stderr; fdout_stderr; fdin_ctrl; fdout_ctrl];
   Format.printf "[STOP] Connection closed@."
 
 let string_of_sockaddr = function
@@ -191,7 +198,7 @@ let string_of_sockaddr = function
 
 let establish_forkless_server ?(single_connection = false) server_fun sockaddr =
   let domain = Unix.domain_of_sockaddr sockaddr in
-  let sock = Unix.socket domain Unix.SOCK_STREAM 0 in
+  let& sock = Unix.socket domain Unix.SOCK_STREAM 0 in
   try
     Unix.setsockopt sock Unix.SO_REUSEADDR true;
     Unix.bind sock sockaddr;
@@ -211,10 +218,8 @@ let establish_forkless_server ?(single_connection = false) server_fun sockaddr =
     done
   with 
   | Unix.Unix_error (Unix.EADDRINUSE, _, _) ->
-    Unix.close sock;
     failwith "Address already in use"
   | exn ->
-    Unix.close sock;
     Format.printf "[STOP] Server stopped@.";
     if exn = Sys.Break then
       Format.printf "Server Interrupted@."
