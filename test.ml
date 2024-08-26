@@ -2,7 +2,8 @@
 
 #load "unix.cma";;
 (* #load "ocamlcommon.cma";;  *)
-#load "server.cmo";;
+
+#mod_use "server.ml";;
 
 let port = ref 2011
 
