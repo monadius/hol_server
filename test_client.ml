@@ -10,7 +10,10 @@ let client ?(host_name = "localhost") port =
   try
     while true do
       let line = input_line in_chan in
-      Printf.printf "%s\n%!" line;
+      if String.length line > 200 then
+        Printf.printf "truncated(%d): %s...\n%!" (String.length line) (String.sub line 0 200)
+      else
+        Printf.printf "%s\n%!" line;
       if line = "ready" then begin
           let cmd = input_line stdin in
           output_string out_chan cmd;

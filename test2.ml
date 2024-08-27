@@ -19,6 +19,16 @@ let test2 () =
     Thread.delay 0.5;
   done
 
+let big () =
+  let buf = Buffer.create (1024 * 100) in
+  Buffer.add_string buf "aa";
+  for i = 1 to 26 do
+    let s = Buffer.contents buf in
+    Printf.printf "%d: %s%!" i s;
+    Thread.delay 0.2;
+    Buffer.add_string buf s;
+  done
+
 let port = ref 2011
 
 let run () =

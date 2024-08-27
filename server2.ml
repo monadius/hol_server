@@ -22,12 +22,16 @@ let write_to_string writer =
 let ($) f x = f x
 
 let (let&) fd f =
-    Fun.protect ~finally:(fun () -> print_endline "closing"; Unix.close fd) (fun () -> f fd)
+  Fun.protect ~finally:(fun () -> print_endline "closing"; Unix.close fd) (fun () -> f fd)
 
 let (let&&) (fd1, fd2) f =
-    let& fd1 = fd1 in
-    let& fd2 = fd2 in
-    f (fd1, fd2)
+  let& fd1 = fd1 in
+  let& fd2 = fd2 in
+  f (fd1, fd2)
+
+let with_blocked signals f =
+  let old_blocked = Thread.sigmask Unix.SIG_BLOCK signals in
+  Fun.protect ~finally:(fun () -> ignore $ Thread.sigmask Unix.SIG_SETMASK old_blocked) f
 
 (** Reads all available data from a given file descriptor *)
 let drain : Unix.file_descr -> Buffer.t =
@@ -82,7 +86,7 @@ let toploop_eval input =
 
 let monitor_thread socket_ic socket_oc (labelled_fdins : (Unix.file_descr * string) list) =
   ignore (Thread.sigmask Unix.SIG_BLOCK [Sys.sigint]);
-  let bytes_size = 10 * 1024 in
+  let bytes_size = 16 * 1024 in
   let bytes = Bytes.create bytes_size in
   (* It is not a very good idea to use a buffered input for the socket:
      We rely on the fact that the client is well-behaved and always sends
@@ -118,8 +122,9 @@ let monitor_thread socket_ic socket_oc (labelled_fdins : (Unix.file_descr * stri
       let rs, _, _ = Unix.select fdins [] [] (-1.) in
       List.iter process rs
     done
-  with End_of_file ->
-    print_endline "End_of_file: thread stopped"
+  with 
+  | End_of_file -> prerr_endline "[THREAD] End_of_file: thread stopped"
+  | exn -> prerr_endline (Printf.sprintf "[THREAD] Exception: %s" $ Printexc.to_string exn); raise exn
 
 let rec mt_service (ic, oc) =
   Format.printf "[START] Connection open@.";
@@ -140,7 +145,7 @@ let rec mt_service (ic, oc) =
     if flush_output then flush oc 
   in
 
-  send_string ~flush_output:true "info:" (Printf.sprintf "interrupt:true;pid:%d" (Unix.getpid ()));
+  send_string ~flush_output:true "info:" (Printf.sprintf "interrupt:true;pid:%d" $ Unix.getpid ());
   let connected = ref true in
   while !connected do
     try
@@ -153,10 +158,14 @@ let rec mt_service (ic, oc) =
       if List.mem (String.trim input) ["#quit"; "#quit;;"] then raise End_of_file;
       let t = Thread.create (monitor_thread ic oc) labelled_fdins in
       let stop_monitor () =
+        (* prerr_endline "Stopping monitor"; *)
         ignore (Unix.single_write fdout_ctrl bytes 0 1);
         Thread.join t;
+        (* prerr_endline "Thread joined"; *)
         (* If the thread is already stopped, we don't want to keep any data in the control pipe *)
-        ignore (drain fdin_ctrl)
+        let _buf = drain fdin_ctrl in
+        (* prerr_endline (Printf.sprintf "buf = '%s'" (Buffer.contents buf)) *)
+        ()
       in
       let ok, result =
         try
@@ -233,9 +242,7 @@ let get_host_address host_name =
 let start ?single_connection ?(host_name = "127.0.0.1") port =
   Sys.catch_break true;
   let address = get_host_address host_name in
-  let start_server () = 
-    Format.printf "MT Server; PID: %d; Host address: %s; port number: %d (no forks)@." 
-    (Unix.getpid ()) (Unix.string_of_inet_addr address) port;
-    flush_all();
-    establish_forkless_server ?single_connection mt_service (Unix.ADDR_INET (address, port)) in
-  Unix.handle_unix_error start_server ()
+  Format.printf "MT Server; PID: %d; Host address: %s; port number: %d (no forks)@." 
+    $ Unix.getpid () $ Unix.string_of_inet_addr address $ port;
+  flush_all();
+  establish_forkless_server ?single_connection mt_service (Unix.ADDR_INET (address, port))
