@@ -22,14 +22,14 @@ let write_to_string writer =
 let ($) f x = f x
 
 let (let&) fd f =
-  Fun.protect ~finally:(fun () -> print_endline "closing"; Unix.close fd) (fun () -> f fd)
+  Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> f fd)
 
 let (let&&) (fd1, fd2) f =
   let& fd1 = fd1 in
   let& fd2 = fd2 in
   f (fd1, fd2)
 
-let with_blocked signals f =
+let with_blocked ~signals f =
   let old_blocked = Thread.sigmask Unix.SIG_BLOCK signals in
   Fun.protect ~finally:(fun () -> ignore $ Thread.sigmask Unix.SIG_SETMASK old_blocked) f
 
@@ -41,17 +41,17 @@ let drain : Unix.file_descr -> Buffer.t =
     let buf = Buffer.create size in
     Unix.set_nonblock fdin;
     Fun.protect ~finally:(fun () -> Unix.clear_nonblock fdin) $ fun () ->
-    try
-      let n = ref 1 in
-      while !n > 0 do
-        n := Unix.read fdin bytes 0 size;
-        Buffer.add_subbytes buf bytes 0 !n;
-      done;
-      buf
-    (* Catch all errors because Unix.Unix_error is not reliable if #load "unix.cma" is evaluated
-       by the server: Old functions from the Unix module will throw errors from the new module. *)
-    (* with Unix.Unix_error (Unix.EAGAIN, _, _) | Unix.Unix_error (Unix.EWOULDBLOCK, _, _) -> buf *)
-    with _ -> buf
+      try
+        let n = ref 1 in
+        while !n > 0 do
+          n := Unix.read fdin bytes 0 size;
+          Buffer.add_subbytes buf bytes 0 !n;
+        done;
+        buf
+      (* Catch all errors because Unix.Unix_error is not reliable if #load "unix.cma" is evaluated
+        by the server: Old functions from the Unix module will throw errors from the new module. *)
+      (* with Unix.Unix_error (Unix.EAGAIN, _, _) | Unix.Unix_error (Unix.EWOULDBLOCK, _, _) -> buf *)
+      with _ -> buf
 
 type redirected_descr = {
   new_descr : Unix.file_descr;
@@ -101,7 +101,7 @@ let monitor_thread socket_ic socket_oc (labelled_fdins : (Unix.file_descr * stri
       let line = input_line socket_ic in
       match line with
       | "$interrupt" -> Unix.kill (Unix.getpid ()) Sys.sigint
-      | _ -> if !debug_flag then Format.eprintf "[ERROR] Unexpected command: %s" line
+      | _ -> if !debug_flag then Format.eprintf "[THREAD] Unexpected command: %s@." line
     end
     | Some label ->
       let n = Unix.read fd bytes 0 bytes_size in
@@ -123,8 +123,8 @@ let monitor_thread socket_ic socket_oc (labelled_fdins : (Unix.file_descr * stri
       List.iter process rs
     done
   with 
-  | End_of_file -> prerr_endline "[THREAD] End_of_file: thread stopped"
-  | exn -> prerr_endline (Printf.sprintf "[THREAD] Exception: %s" $ Printexc.to_string exn); raise exn
+  | End_of_file -> (* prerr_endline "[THREAD] End_of_file: thread stopped" *) ()
+  | exn -> Format.eprintf "[THREAD] Exception: %s@." $ Printexc.to_string exn; raise exn
 
 let rec mt_service (ic, oc) =
   Format.printf "[START] Connection open@.";
@@ -145,17 +145,42 @@ let rec mt_service (ic, oc) =
     if flush_output then flush oc 
   in
 
+  let eval_input input =
+    try
+      let finally () = 
+        Format.pp_print_flush Format.std_formatter ();
+        Format.pp_print_flush Format.err_formatter ();
+        flush stdout;
+        flush stderr;
+        (try restore new_stdout with _ -> ());
+        (try restore new_stderr with _ -> ());
+      in
+      Fun.protect ~finally $ fun () -> 
+        redirect Unix.stdout new_stdout;
+        redirect Unix.stderr new_stderr;
+        toploop_eval input
+    with exn ->
+      let exn_str = Printexc.to_string exn in
+      if !debug_flag then Format.eprintf "[ERROR] %s@." exn_str; 
+      false, exn_str
+  in
+
   send_string ~flush_output:true "info:" (Printf.sprintf "interrupt:true;pid:%d" $ Unix.getpid ());
+
   let connected = ref true in
   while !connected do
     try
+      (* Wait for the input *)
       send_string ~flush_output:true "ready" "";
       let raw_input = input_line ic in
       let input = 
-        try Scanf.unescaped raw_input 
+        try String.trim (Scanf.unescaped raw_input)
         with _ -> Format.eprintf "[ERROR] Bad input@."; raw_input in
+      (* Process special input cases *)
       if !debug_flag then Format.printf "Input: %s@." input;
-      if List.mem (String.trim input) ["#quit"; "#quit;;"] then raise End_of_file;
+      if input = "$interrupt" then raise Sys.Break;
+      if List.mem input ["#quit"; "#quit;;"] then raise End_of_file;
+      (* Start a monitor thread *)
       let t = Thread.create (monitor_thread ic oc) labelled_fdins in
       let stop_monitor () =
         (* prerr_endline "Stopping monitor"; *)
@@ -164,28 +189,13 @@ let rec mt_service (ic, oc) =
         (* prerr_endline "Thread joined"; *)
         (* If the thread is already stopped, we don't want to keep any data in the control pipe *)
         let _buf = drain fdin_ctrl in
-        (* prerr_endline (Printf.sprintf "buf = '%s'" (Buffer.contents buf)) *)
+        (* prerr_endline (Printf.sprintf "buf = '%s'" (Buffer.contents _buf)); *)
         ()
       in
-      let ok, result =
-        try
-          let finally () = 
-            Format.pp_print_flush Format.std_formatter ();
-            Format.pp_print_flush Format.err_formatter ();
-            flush stdout;
-            flush stderr;
-            restore new_stdout;
-            restore new_stderr;
-          in
-          redirect Unix.stdout new_stdout;
-          redirect Unix.stderr new_stderr;
-          Fun.protect ~finally (fun () -> toploop_eval input)
-        with exn ->
-          let exn_str = Printexc.to_string exn in
-          if !debug_flag then Format.eprintf "[ERROR] %s@." exn_str; 
-          false, exn_str
-        in
-      stop_monitor ();
+      (* Evaluate the input *)
+      let ok, result = Fun.protect ~finally:stop_monitor (fun () -> eval_input input) in
+      (* Send the response to a client *)
+      (* Sigpipe is raised here if the connection is broken *)
       let stdout_str = Buffer.contents (drain fdin_stdout) in
       let stderr_str = Buffer.contents (drain fdin_stderr) in
       send_string "stdout:" stdout_str;
