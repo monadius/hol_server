@@ -8,7 +8,7 @@ Clone this repository and run `make` to compile the server code. To start the se
 #load "unix.cma";;
 #load "threads.cma";;
 #load "{path to the server}/server2.cmo";;
-Server.start 2012;;
+Server2.start 2012;;
 ```
 
 (Replace `{path to the server}` with the path where this repository is cloned.)
@@ -44,7 +44,7 @@ All result strings are escaped with `String.escaped`. All server messages end wi
 
 ### Special commands
 
-- `$interrupt`: sends the SIGINT signal to the main thread. This command may be sent
+- `$interrupt` (`server2` only): sends the SIGINT signal to the main thread. This command may be sent
 any time (it is not necessary to wait for the `ready` message).
 
 - `#quit` (or `#quit;;`): disconnects a client from the server.
