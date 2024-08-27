@@ -21,6 +21,8 @@ let write_to_string writer =
 
 let ($) f x = f x
 
+(* Bind operators are not supported by HOL Light's Camlp5 *)
+(*
 let (let&) fd f =
   Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> f fd)
 
@@ -28,6 +30,15 @@ let (let&&) (fd1, fd2) f =
   let& fd1 = fd1 in
   let& fd2 = fd2 in
   f (fd1, fd2)
+*)
+
+let with_close fd f =
+  Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> f fd)
+
+let with_pipe f =
+  let fdin, fdout = Unix.pipe () in
+  with_close fdin $ fun fdin -> with_close fdout $ fun fdout -> f fdin fdout
+
 
 let with_blocked ~signals f =
   let old_blocked = Thread.sigmask Unix.SIG_BLOCK signals in
@@ -129,9 +140,12 @@ let monitor_thread socket_ic socket_oc (labelled_fdins : (Unix.file_descr * stri
 let rec mt_service (ic, oc) =
   Format.printf "[START] Connection open@.";
 
-  let&& fdin_stdout, fdout_stdout = Unix.pipe () in
+  (* let&& fdin_stdout, fdout_stdout = Unix.pipe () in
   let&& fdin_stderr, fdout_stderr = Unix.pipe () in
-  let&& fdin_ctrl, fdout_ctrl = Unix.pipe () in
+  let&& fdin_ctrl, fdout_ctrl = Unix.pipe () in *)
+  with_pipe $ fun fdin_stdout fdout_stdout ->
+  with_pipe $ fun fdin_stderr fdout_stderr ->
+  with_pipe $ fun fdin_ctrl fdout_ctrl ->
 
   let new_stdout = create_redirected_descr fdout_stdout in
   let new_stderr = create_redirected_descr fdout_stderr in
@@ -217,7 +231,7 @@ let string_of_sockaddr = function
 
 let establish_forkless_server ?(single_connection = false) server_fun sockaddr =
   let domain = Unix.domain_of_sockaddr sockaddr in
-  let& sock = Unix.socket domain Unix.SOCK_STREAM 0 in
+  with_close (Unix.socket domain Unix.SOCK_STREAM 0) $ fun sock ->
   try
     Unix.setsockopt sock Unix.SO_REUSEADDR true;
     Unix.bind sock sockaddr;
