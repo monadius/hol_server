@@ -1,0 +1,7 @@
+rm -f init0.ml
+
+cat experiments/init.ml >> init0.ml
+echo "
+#use \"$1\"" >> init0.ml
+
+ocaml -I "+threads" -init init0.ml
