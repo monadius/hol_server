@@ -202,9 +202,7 @@ let rec mt_service (ic, oc) =
         Thread.join t;
         (* prerr_endline "Thread joined"; *)
         (* If the thread is already stopped, we don't want to keep any data in the control pipe *)
-        let _buf = drain fdin_ctrl in
-        (* prerr_endline (Printf.sprintf "buf = '%s'" (Buffer.contents _buf)); *)
-        ()
+        ignore (drain fdin_ctrl)
       in
       (* Evaluate the input *)
       let ok, result = Fun.protect ~finally:stop_monitor (fun () -> eval_input input) in
