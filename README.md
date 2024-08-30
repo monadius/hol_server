@@ -24,6 +24,8 @@ unset_jrh_lexer;;
 set_jrh_lexer;;
 ```
 
+A server can be stopped by typing `CTRL + C` inside the server terminal. Note that `CTRL + C` does not stop a server when there is a connected client. Instead, `CTRL + C` will interrupt a command executed by a server.
+
 ## Protocol
 
 All result strings are escaped with `String.escaped`. All server messages end with the newline character `\n`. All commands sent to a server should be terminated with a single `\n`. The command text should be escaped (they are processed with `Scanf.unescaped`).
