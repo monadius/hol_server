@@ -7,7 +7,8 @@ Clone this repository and run `make` to compile the server code. To start the se
 #directory "+threads";;
 #load "unix.cma";;
 #load "threads.cma";;
-#load "{path to the server}/server2.cmo";;
+#directory "{path to the server}";;
+#load "server2.cmo";;
 Server2.start 2012;;
 ```
 
