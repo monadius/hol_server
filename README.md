@@ -2,13 +2,12 @@
 
 This server is used by the [HOL Light VS Code extension](https://github.com/monadius/vscode-hol-light) to execute HOL Light commands and get command results.
 
-Clone this repository and run `make` to compile the server code. To start the server inside an active HOL Light REPL, run the following commands:
+To start the server inside an active HOL Light REPL, run the following commands:
 ```ocaml
 #directory "+threads";;
 #load "unix.cma";;
 #load "threads.cma";;
-#directory "{path to the server}";;
-#load "server2.cmo";;
+#mod_use "{path to the server}/server2.ml";;
 Server2.start 2012;;
 ```
 
@@ -18,13 +17,6 @@ Server2.start 2012;;
 
 `server2.ml` is a multi-threaded server. It should be preferred over `server.ml` which cannot send real-time updates about executing commands to a client.
 
-It is not necessary to compile the server code to load it in OCaml. The directive `#load "server2.cmo"` can be replaced with `#mod_use "server.ml"`. If the server source code is loaded with `#mod_use` (or `#use`) inside a HOL Light session, it is necessary to turn off HOL Light's parsing rules first:
-```ocaml
-unset_jrh_lexer;;
-#mod_use "{path to the server}/server2.ml"
-set_jrh_lexer;;
-```
-
 A server can be stopped by typing `CTRL + C` inside the server terminal. Note that `CTRL + C` does not stop a server when there is a connected client. Instead, `CTRL + C` will interrupt a command executed by a server.
 
 ## Protocol
@@ -33,7 +25,7 @@ All result strings are escaped with `String.escaped`. All server messages end wi
 
 ### Server messages
 
-- `ready`: the server waits for a command. All commands (except `$interrupt`) must be sent to the server after receiving the `ready` message from the server.
+- `ready:{escaped text}`: the server waits for a command. All commands (except `$interrupt`) must be sent to the server after receiving the `ready` message from the server. Currently the following message is sent by `server2`: `ready:subgoals:{# subgoals info}`
 
 - `info:{escaped text}`: information about the server such as the pid of the server process. Currently the following message is sent by `server2`: `info:interrupt:true;pid:{server process PID}`. The message from `server` does not include the `interrupt:true` part.
 
