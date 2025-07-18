@@ -185,7 +185,7 @@ let rec mt_service (ic, oc) =
   while !connected do
     try
       (* Wait for the input *)
-      send_string ~flush_output:true "ready" "";
+      send_string ~flush_output:true "ready:" "";
       let raw_input = input_line ic in
       let input = 
         try String.trim (Scanf.unescaped raw_input)

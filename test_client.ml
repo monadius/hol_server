@@ -14,7 +14,7 @@ let client ?(host_name = "localhost") port =
         Printf.printf "truncated(%d): %s...\n%!" (String.length line) (String.sub line 0 200)
       else
         Printf.printf "%s\n%!" line;
-      if line = "ready" then begin
+      if String.starts_with line ~prefix:"ready" then begin
           let cmd = input_line stdin in
           output_string out_chan cmd;
           output_string out_chan "\n";

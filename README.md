@@ -33,7 +33,7 @@ All result strings are escaped with `String.escaped`. All server messages end wi
 
 ### Server messages
 
-- `ready`: the server waits for a command. All commands (except `$interrupt`) must be sent to the server after receiving the `ready` message from the server.
+- `ready:`: the server waits for a command. All commands (except `$interrupt`) must be sent to the server after receiving the `ready:` message from the server.
 
 - `info:{escaped text}`: information about the server such as the pid of the server process. Currently the following message is sent by `server2`: `info:interrupt:true;pid:{server process PID}`. The message from `server` does not include the `interrupt:true` part.
 
