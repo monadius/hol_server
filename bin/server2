@@ -1,2 +1,1 @@
-trap "" SIGTSTP
 ocaml -init bin/load_server2.ml
