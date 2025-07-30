@@ -5,6 +5,7 @@ let debug_flag = ref true
 
 let () = Sys.set_signal Sys.sigpipe (Sys.Signal_handle (fun _ -> raise Sigpipe))
 let () = Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout))
+let () = Sys.set_signal Sys.sigtstp (Sys.Signal_handle (fun _ -> raise End_of_file))
 
 let rec restart_on_EINTR f x =
   try f x with Unix.Unix_error (Unix.EINTR, _, _) -> restart_on_EINTR f x
