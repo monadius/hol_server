@@ -1,6 +1,6 @@
 ## A server for executing toplevel HOL Light commands
 
-This server is used by the [HOL Light VS Code extension](https://github.com/monadius/vscode-hol-light) to execute HOL Light commands and get command results.
+This server is used by the [HOL Light VS Code extension](https://github.com/monadius/vscode-hol-light) to execute HOL Light commands and get command results. See the [`vscode`](https://github.com/monadius/hol_server/tree/vscode) branch for the server code used by the extension (it contains some additional HOL Light-specific features).
 
 Clone this repository and run `make` to compile the server code. To start the server inside an active HOL Light REPL, run the following commands:
 ```ocaml
