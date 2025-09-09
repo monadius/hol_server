@@ -17,7 +17,7 @@ Server2.start 2012;;
 
 `server2.ml` is a multi-threaded server. It should be preferred over `server.ml` which cannot send real-time updates about executing commands to a client.
 
-A server can be stopped by typing `CTRL + C` inside the server terminal. Note that `CTRL + C` does not stop a server when there is a connected client. Instead, `CTRL + C` will interrupt a command executed by a server.
+A server can be stopped by typing `CTRL + C` in the server terminal. Note that `CTRL + C` does not stop a server when there is a connected client. Instead, `CTRL + C` will interrupt a command executed by a server. In order to stop a server with a connected client, type `stop` in the server terminal to disconnect the client and then type `CTRL + C`.
 
 ## Protocol
 
@@ -38,6 +38,8 @@ All result strings are escaped with `String.escaped`. All server messages end wi
 - `rerror:{escaped text}`: the error result. It could be either a parsing error or an exception.
 
 ### Special commands
+
+- Any `server2` command can be prefixed with `$silent$`. This will suppress automatic `it` binding for top level expressions.
 
 - `$interrupt` (`server2` only): sends the SIGINT signal to the main thread. This command may be sent
 any time (it is not necessary to wait for the `ready` message).
