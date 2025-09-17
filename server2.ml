@@ -21,18 +21,7 @@ let write_to_string writer =
     Format.pp_print_flush fmt ();
     result, Buffer.contents buf
 
-let ($) f x = f x
-
-(* Bind operators are not supported by HOL Light's Camlp5 *)
-(*
-let (let&) fd f =
-  Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> f fd)
-
-let (let&&) (fd1, fd2) f =
-  let& fd1 = fd1 in
-  let& fd2 = fd2 in
-  f (fd1, fd2)
-*)
+let ($) f x = f x;;
 
 let with_close fd f =
   Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> f fd)
@@ -92,11 +81,23 @@ let restore redirected =
   | Some descr ->
     redirected.old_descr_dup <- None;
     Unix.dup2 descr redirected.old_descr;
-    Unix.close descr
+    Unix.close descr;;
 
-let toploop_eval ~silent input =
-  let eval () = write_to_string Toploop.use_input (Toploop.String input) in
-  if silent then
+let eval_result = ref "";;
+
+let toploop_eval ?(silent=false) ?(string=false) input =
+  let eval () = 
+    if string then
+      let input = "Server2.eval_result := " ^ input in
+      let ok, out = write_to_string Toploop.use_input (Toploop.String input) in
+      if ok then
+        ok, !eval_result
+      else
+        ok, out
+    else
+      write_to_string Toploop.use_input (Toploop.String input) 
+  in
+  if silent || string then
     eval ()
   else
     let add_it ph =
@@ -117,7 +118,7 @@ let toploop_eval ~silent input =
     Toploop.parse_use_file := new_parse;
     Fun.protect 
       ~finally:(fun () -> Toploop.parse_use_file := parse) 
-      eval
+      eval;;
 
 (* Returns (# total subgoals, # subgoals). Does what print_goalstate of HOL Light does *)
 let hol_get_num_subgoals () =
@@ -178,9 +179,6 @@ let monitor_thread socket_ic socket_oc (labelled_fdins : (Unix.file_descr * stri
 let rec mt_service (ic, oc) =
   Format.printf "[START] Connection open@.";
 
-  (* let&& fdin_stdout, fdout_stdout = Unix.pipe () in
-  let&& fdin_stderr, fdout_stderr = Unix.pipe () in
-  let&& fdin_ctrl, fdout_ctrl = Unix.pipe () in *)
   with_pipe $ fun fdin_stdout fdout_stdout ->
   with_pipe $ fun fdin_stderr fdout_stderr ->
   with_pipe $ fun fdin_ctrl fdout_ctrl ->
@@ -217,16 +215,33 @@ let rec mt_service (ic, oc) =
     | [] -> failwith "No input available"
   in
 
+  let parse_args input =
+    let split ch s =
+      let n = String.length s in
+      try
+        let i = String.index s ch in
+        String.sub s 0 i, String.sub s (i + 1) (n - i - 1)
+      with Not_found ->
+        s, "" in
+    if String.starts_with ~prefix:"$" input then
+      try
+        let i = String.index_from input 1 '$' in
+        let args = 
+          String.sub input 1 (i - 1)
+          |> String.split_on_char ';'
+          |> List.map (split '=') in
+        String.sub input (i + 1) (String.length input - i - 1), args
+      with Not_found ->
+        input, []
+    else
+      input, []
+  in
+
   let eval_input input =
     try
-      let silent, input =
-        let prefix = "$silent$" in
-        let plen = String.length prefix in
-        if String.starts_with ~prefix input then
-          true, String.sub input plen (String.length input - plen)
-        else
-          false, input in
-      let finally () = 
+      let input, args = parse_args input in
+      let is_defined arg = Option.fold ~none:false ~some:(Fun.const true) (List.assoc_opt arg args) in
+      let finally () =
         Format.pp_print_flush Format.std_formatter ();
         Format.pp_print_flush Format.err_formatter ();
         flush stdout;
@@ -237,7 +252,7 @@ let rec mt_service (ic, oc) =
       Fun.protect ~finally $ fun () -> 
         redirect Unix.stdout new_stdout;
         redirect Unix.stderr new_stderr;
-        toploop_eval ~silent input
+        toploop_eval ~silent:(is_defined "silent") ~string:(is_defined "string") input
     with exn ->
       let exn_str = Printexc.to_string exn in
       if !debug_flag then Format.eprintf "[ERROR] %s@." exn_str; 
