@@ -21,7 +21,7 @@ let write_to_string writer =
     Format.pp_print_flush fmt ();
     result, Buffer.contents buf
 
-let ($) f x = f x;;
+let ($) f x = f x
 
 let with_close fd f =
   Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> f fd)
@@ -81,9 +81,9 @@ let restore redirected =
   | Some descr ->
     redirected.old_descr_dup <- None;
     Unix.dup2 descr redirected.old_descr;
-    Unix.close descr;;
+    Unix.close descr
 
-let eval_result = ref "";;
+let eval_result = ref ""
 
 let toploop_eval ?(silent=false) ?(string=false) input =
   let eval () = 
@@ -118,7 +118,7 @@ let toploop_eval ?(silent=false) ?(string=false) input =
     Toploop.parse_use_file := new_parse;
     Fun.protect 
       ~finally:(fun () -> Toploop.parse_use_file := parse) 
-      eval;;
+      eval
 
 (* Returns (# total subgoals, # subgoals). Does what print_goalstate of HOL Light does *)
 let hol_get_num_subgoals () =
@@ -347,6 +347,6 @@ let start ?single_connection ?(host_name = "127.0.0.1") port =
   Format.printf "MT Server; PID: %d; Host address: %s; port number: %d (no forks)@." 
     $ Unix.getpid () $ Unix.string_of_inet_addr address $ port;
   flush_all();
-  establish_forkless_server ?single_connection mt_service (Unix.ADDR_INET (address, port));;
+  establish_forkless_server ?single_connection mt_service (Unix.ADDR_INET (address, port))
 
 set_jrh_lexer;;
