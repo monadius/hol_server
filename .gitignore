@@ -29,3 +29,7 @@ setup.log
 
 # Local OPAM switch
 _opam/
+
+json/*.mli
+json/*.ml
+json/*.ts

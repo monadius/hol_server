@@ -1,0 +1,15 @@
+type hypothesis = {
+    label: string;
+    term: string;
+}
+
+type goal = {
+    hypotheses: hypothesis list;
+    term: string;
+}
+
+type goalstate = {
+    goals: goal list;
+    subgoals: int;
+}
+
