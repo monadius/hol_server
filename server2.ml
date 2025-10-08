@@ -92,8 +92,21 @@ let restore redirected =
     Unix.dup2 descr redirected.old_descr;
     Unix.close descr
 
-let toploop_eval input =
-  write_to_string Toploop.use_input (Toploop.String input)
+let eval_result = ref ""
+
+let toploop_eval ?(silent=false) ?(string=false) input =
+  let eval () = 
+    if string then
+      let input = "Server2.eval_result := " ^ input in
+      let ok, out = write_to_string Toploop.use_input (Toploop.String input) in
+      if ok then
+        ok, !eval_result
+      else
+        ok, out
+    else
+      write_to_string Toploop.use_input (Toploop.String input) 
+  in
+  eval ()
 
 let monitor_thread socket_ic socket_oc (labelled_fdins : (Unix.file_descr * string) list) =
   ignore (Thread.sigmask Unix.SIG_BLOCK [Sys.sigint]);
@@ -179,9 +192,33 @@ let rec mt_service (ic, oc) =
     | [] -> failwith "No input available"
   in
 
+  let parse_args input =
+    let split ch s =
+      let n = String.length s in
+      try
+        let i = String.index s ch in
+        String.sub s 0 i, String.sub s (i + 1) (n - i - 1)
+      with Not_found ->
+        s, "" in
+    if String.starts_with ~prefix:"$" input then
+      try
+        let i = String.index_from input 1 '$' in
+        let args = 
+          String.sub input 1 (i - 1)
+          |> String.split_on_char ';'
+          |> List.map (split '=') in
+        String.sub input (i + 1) (String.length input - i - 1), args
+      with Not_found ->
+        input, []
+    else
+      input, []
+  in
+
   let eval_input input =
     try
-      let finally () = 
+      let input, args = parse_args input in
+      let is_defined arg = Option.fold ~none:false ~some:(Fun.const true) (List.assoc_opt arg args) in
+      let finally () =
         Format.pp_print_flush Format.std_formatter ();
         Format.pp_print_flush Format.err_formatter ();
         flush stdout;
@@ -192,7 +229,7 @@ let rec mt_service (ic, oc) =
       Fun.protect ~finally $ fun () -> 
         redirect Unix.stdout new_stdout;
         redirect Unix.stderr new_stderr;
-        toploop_eval input
+        toploop_eval ~silent:(is_defined "silent") ~string:(is_defined "string") input
     with exn ->
       let exn_str = Printexc.to_string exn in
       if !debug_flag then Format.eprintf "[ERROR] %s@." exn_str; 

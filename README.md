@@ -47,6 +47,10 @@ All result strings are escaped with `String.escaped`. All server messages end wi
 
 ### Special commands
 
+- Any `server2` command can be prefixed with arguments enclosed in `$...$` and separated by `;`. For example, `$arg1;arg2=value$1+1;;` asks the server to execute the command `1+1;;` with arguments `arg1` (without any value) and `arg2` (with the value `value`). The following arguments are supported:
+    
+    - `string` (without value). Execute a command which returns a string and return its result.
+
 - `$interrupt` (`server2` only): sends the SIGINT signal to the main thread. This command may be sent
 any time (it is not necessary to wait for the `ready` message).
 
