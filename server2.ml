@@ -347,6 +347,6 @@ let start ?single_connection ?(host_name = "127.0.0.1") port =
   Format.printf "MT Server; PID: %d; Host address: %s; port number: %d (no forks)@." 
     $ Unix.getpid () $ Unix.string_of_inet_addr address $ port;
   flush_all();
-  establish_forkless_server ?single_connection mt_service (Unix.ADDR_INET (address, port))
+  establish_forkless_server ?single_connection mt_service (Unix.ADDR_INET (address, port));;
 
 set_jrh_lexer;;

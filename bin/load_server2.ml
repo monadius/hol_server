@@ -4,6 +4,7 @@
 #load "unix.cma";;
 #load "threads.cma";;
 #mod_use "server2.ml";;
+#mod_use "hol_light_json.ml";;
 
 (* We cannot start a server inside the init script because
   this script is loaded by `use_silently` which sets the 
