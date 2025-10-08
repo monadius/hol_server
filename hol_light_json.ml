@@ -29,7 +29,7 @@ let finish_string src start ob =
       src !start (String.length src - !start);
     raise exc
 
-let write_string_body ob s =
+let [@warning "-12"] write_string_body ob s =
   let start = ref 0 in
   for i = 0 to String.length s - 1 do
     match s.[i] with
@@ -40,11 +40,12 @@ let write_string_body ob s =
       | '\n' -> write_special s start i ob "\\n"
       | '\r' -> write_special s start i ob "\\r"
       | '\t' -> write_special s start i ob "\\t"
-      | '\x00'..'\x1F' as c -> write_control_char s start i ob c
+      | '\x00'..'\x1F'
       | '\x7F' as c -> write_control_char s start i ob c
       | _ -> ()
   done;
-  finish_string s start ob
+  finish_string s start ob;;
+
 
 let write_string ob s =
   Buffer.add_char ob '"';
@@ -84,20 +85,20 @@ let write_int ob x =
 
 end;;
 
-let write_to_string writer =
+let write_to_string ?max_boxes ?margin writer =
   let buf = Buffer.create 1024 in
   let fmt = Format.formatter_of_buffer buf in
-  Format.pp_set_max_boxes fmt 100;
+  (match max_boxes with
+  | None | Some 0 -> ()
+  | Some n -> Format.pp_set_max_boxes fmt n);
+  (match margin with
+  | None | Some 0 -> ()
+  | Some n -> Format.pp_set_margin fmt n);
   fun arg ->
     Buffer.clear buf;
     let result = writer fmt arg in
     Format.pp_print_flush fmt ();
     result, Buffer.contents buf;;
-
-let write_term ~color ob t =
-  let writer = if color then pp_print_colored_term else pp_print_term in
-  let _, s = write_to_string writer t in
-  Json.write_string ob s;;
 
 let write_list ob writer lst =
   Buffer.add_char ob '[';
@@ -107,31 +108,58 @@ let write_list ob writer lst =
   ) lst;
   Buffer.add_char ob ']';;
 
-let write_goal ~color ob =
+let write_term ~color ?max_boxes ?margin ob t =
+  let writer = if color then pp_print_colored_term else pp_print_term in
+  let _, s = write_to_string ?max_boxes ?margin writer t in
+  Json.write_string ob s;;
+
+type goal_options = {
+    color: bool;
+    max_boxes: int;
+    max_hyp_boxes: int;
+    margin: int;
+};;
+
+let goal_default_options = {
+  color = true;
+  max_boxes = 0;
+  max_hyp_boxes = 0;
+  margin = 0;
+};;
+
+let write_goal ~options ob =
   let write_hyp ob (label, hyp) =
     Buffer.add_char ob '{';
     Buffer.add_string ob "\"label\":";
     Json.write_string ob label;
     Buffer.add_char ob ',';
     Buffer.add_string ob "\"term\":";
-    write_term ~color ob (concl hyp);
+    write_term 
+      ~color:options.color
+      ~max_boxes:options.max_hyp_boxes
+      ~margin:options.margin
+      ob (concl hyp);
     Buffer.add_char ob '}'
   in
   fun (goal : goal) ->
     let hyps, tm = goal in
     Buffer.add_char ob '{';
     Buffer.add_string ob "\"hypotheses\":";
-    write_list ob write_hyp hyps;
+    write_list ob write_hyp (List.rev hyps);
     Buffer.add_char ob ',';
     Buffer.add_string ob "\"term\":";
-    write_term ~color ob tm;
+    write_term 
+      ~color:options.color
+      ~max_boxes:options.max_boxes
+      ~margin:options.margin 
+      ob tm;
     Buffer.add_char ob '}';;
 
-let write_goalstate ~color ob (gs : goalstate) =
+let write_goalstate ~options ob (gs : goalstate) =
   let _, goals, _ = gs in
-  write_list ob (write_goal ~color) goals;;
+  write_list ob (write_goal ~options) goals;;
 
-let write_top_goalstate ~color ob =
+let write_top_goalstate ~options ob =
   let goals, subgoals =
     match !current_goalstack with
     | [] -> [], 0
@@ -141,13 +169,13 @@ let write_top_goalstate ~color ob =
       goals, if p < 1 then 1 else p + 1 in
   Buffer.add_char ob '{';
   Buffer.add_string ob "\"goals\":";
-  write_list ob (write_goal ~color) goals;
+  write_list ob (write_goal ~options) goals;
   Buffer.add_char ob ',';
   Buffer.add_string ob "\"subgoals\":";
   Json.write_int ob subgoals;
   Buffer.add_char ob '}';;
 
-let json_of_top_goalstate ~color =
+let json_of_top_goalstate ~options =
   let ob = Buffer.create 1024 in
-  write_top_goalstate ~color ob;
+  write_top_goalstate ~options ob;
   Buffer.contents ob;;
